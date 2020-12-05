@@ -1,3 +1,10 @@
+# dbx_xfr stuff
+*.cfg
+
+# emacs stuff
+*~
+*#
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
