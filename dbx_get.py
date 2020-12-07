@@ -15,8 +15,8 @@ import dbx_xfr as dbx
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print('Puts a file on dropbox.')
-        print('Usage: python3 dbx_put.py filename.ext')
+        print('Gets a file from dropbox.')
+        print('Usage: python3 dbx_get.py filename.ext')
         exit(1)
         
     filename = sys.argv[1]
@@ -24,19 +24,19 @@ if __name__ == '__main__':
     with dbx.DropBox() as db:
         hostname = socket.gethostname()
         db.path = '/{}'.format(hostname)
-        print('uploading {} to {} dropbox folder'.format(filename, db.path))
+        print('downloading {} from {} dropbox folder'.format(filename, db.path))
         
         if not db.status:
             print('Failed to connect to dropbox')
             exit(2)
 
         datestamp = time.strftime("%Y-%b-%d %H:%M:%S +0000", time.gmtime())
-        print('{}: Uploading {} to dropbox...'.format(datestamp, filename))
-        if db.put(filename):
-            print('{}: Upload complete.'.format(datestamp))
+        print('{}: Downloading {} from dropbox...'.format(datestamp, filename))
+        if db.get(filename):
+            print('{}: Download complete.'.format(datestamp))
             status = 0
         else:
-            print('upload failed')
+            print('download failed')
             status = 3
 
     exit(status)

@@ -114,27 +114,47 @@ class DropBox(object):
 
         # Uploads contents of filename to Dropbox
         with open(filename, 'rb') as f:
+            success = False
             # We use WriteMode=overwrite to make sure that the settings in the file
             # are changed on upload
             try:
                 filename = os.path.join(self.path, os.path.basename(filename))
                 mode = dropbox.files.WriteMode.overwrite
                 self.dbx.files_upload(f.read(), filename, mode=mode)
+                success = True
             except dropbox.exceptions.ApiError as err:
                 # This checks for the specific error where a user doesn't have
                 # enough Dropbox space quota to upload this file
                 if (err.error.is_path() and err.error.get_path().reason.is_insufficient_space()):
                     print("ERROR: copy failed; insufficient space.")
-                    return False
                 elif err.user_message_text:
                     print(err.user_message_text)
-                    return False
                 else:
                     print(err)
-                    return False
 
-        return True
+        return success
 
+    def get(self, filename, local_path='.'):
+        if not self.status:
+            print('ERROR: no connection to dropbox account')
+            return False
+
+        source = os.path.join(self.path, filename)
+        destination = os.path.join(local_path, filename)
+        status = False
+
+        try:
+            md = self.dbx.files_download_to_file(destination, source)
+            status = True
+        except dropbox.exceptions.HttpError as err:
+            print('ERROR: HTTP error', err)
+        except dropbox.exceptions.ApiError as err:
+            if (err.error.is_path() and err.error.get_path().is_not_found()):
+                print('ERROR: {} not found on dropbox'.format(source))
+            else: 
+                print('ERROR: download error', err)
+
+        return status
 
 
 if __name__ == '__main__':
