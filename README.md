@@ -1,16 +1,15 @@
 # dbx-xfr
-Dead simple dropbox file transfer library in Python
+Dead simple Dropbox file transfer library in Python
 
 # Description
-A dead simple python library for getting and putting files on Dropbox.  Heavily leans on example code found in the dropbox [python sdk](https://github.com/dropbox/dropbox-sdk-python)
+A simple python library for getting files on and off Dropbox.  Heavily leans on example code found in the dropbox [python sdk](https://github.com/dropbox/dropbox-sdk-python)
 
-On first run, leads the user thru the pairing sequence allowing the app access to the users dropbox Apps/dbx-xfr folder with file read/write access, and saves the refresh token returned by dropbox in a config file in the apps directory.  On subsequent runs, the refresh token is retrieved from the config file without need of user intervention unless the refresh token has be invalidated for some reason.
+On first run, leads the user thru the pairing sequence allowing the app access to the users dropbox Apps/dbx-xfr folder with file read/write access, saving the refresh token returned by dropbox in a config file in the local directory.  On subsequent runs, the refresh token is retrieved from the config file without need of user intervention unless the file or the token has be invalidated in some way.
 
-Developed and tested on raspberry pi zero with python 3.7.3
+Developed and tested on Raspberry Pi Zero with Python 3.7.3
 
 # Dependencies
 pip3 install dropbox
-python3
 
 # Example
     import dbx_xfr as dbx
@@ -21,4 +20,4 @@ python3
        if db.put(filename):
           print('success')
        else:
-	  print('failure')
+          print('failure')
