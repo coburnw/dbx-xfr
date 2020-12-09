@@ -14,6 +14,7 @@ import json
 
 import dropbox
 from dropbox import DropboxOAuth2FlowNoRedirect
+import requests
 
 # feel free to use this app key.
 # But understand it might go away sometime, either intentionally or by mistake.
@@ -22,8 +23,53 @@ from dropbox import DropboxOAuth2FlowNoRedirect
 APP_KEY = 'rdouezhyvocju81'
 CONFIG_FILE_NAME = 'dbx-xfr.cfg'
 
+class XfrError(Exception):
+    pass
+
+class HttpError(XfrError):
+    def __init__(self, error):
+        self.error = error
+        return
+
+    def __repr__(self):
+        print(self.body)
+        return
+    
+class UploadError(XfrError):
+    def __init__(self, error):
+        self.error = error
+        return
+
+    def __repr__(self):
+        if (self.error.is_path() and self.error.get_path().reason.is_insufficient_space()):
+            # ApiError.error contains dropbox.files.UploadError
+            # get_path() returns a dropbox.files.UploadWriteFailed
+            # get_path().reason returns a dropbox.files.WriteError
+            print("ERROR: copy failed; insufficient space.")
+        elif self.error.user_message_text:
+            print(self.error.user_message_text)
+        else:
+            print('ERROR: upload error', self.error)
+        return
+
+class DownloadError(XfrError):
+    def __init__(self, error):
+        self.error = error
+        return
+    
+    def __repr__(self):
+        if (self.error.is_path() and self.error.get_path().is_not_found()):
+            # ApiError.error contains dropbox.files.DownloadError
+            # error.get_path() returns a file_properties.LookupError
+            #print('ERROR: {} not found on dropbox'.format(source))
+            print(self.error.get_path())
+        else: 
+            print('ERROR: download error', self.error)
+
+        return
+    
 class Config(object):
-    DEFAULT_CONFIG = {'_app_key':APP_KEY, '_refresh_token':None}
+    #DEFAULT_CONFIG = {'_app_key':APP_KEY, '_refresh_token':None}
     
     def __init__(self):
         self._app_key = APP_KEY
@@ -51,31 +97,64 @@ class Config(object):
 
         return
 
+    def authenticate(self):
+        success = False
+        self.app_key = self.get_app_key()
+        self._refresh_token = self.get_refresh_token()
+        
+        if self._refresh_token is not None:
+            self.persist()
+            success = True
+            
+        return success
+    
+    @property
+    def app_key(self):
+        return self._app_key
+
+    @app_key.setter
+    def app_key(self, key):
+        if len(key) > 1:
+            self._app_key = key
+        return
+
+    def get_app_key(self):
+        if self.app_key:
+            print('current app_key is {}'.format(self.app_key))
+            print('at prompt, enter <cr> to keep existing app_key')
+
+        app_key = input("Enter app_key here: ").strip()
+        return app_key
+
+        
     @property
     def refresh_token(self):
-        if self._refresh_token is None:
-            self._refresh_token = self.get_refresh_token()
-            if self._refresh_token is not None:
-                self.persist_config()
         return self._refresh_token
 
+    @refresh_token.setter
+    def refresh_token(self, token):
+        self._refresh_token = token
+        return
+        
     def get_refresh_token(self):
+        refresh_token = None
+        
         auth_flow = DropboxOAuth2FlowNoRedirect(self._app_key, use_pkce=True, token_access_type='offline')
         authorize_url = auth_flow.start()
         
         print()
-        print("1. Go to: " + authorize_url)
-        print("2. Click \"Allow\" (you might have to log in first).")
-        print("3. Copy the authorization code.")
-        auth_code = input("Enter the authorization code here: ").strip()
+        print('1. Go to: ' + authorize_url)
+        print('2. Click "Allow" (you might have to log in first).')
+        print('3. Copy the authorization code.')
+        auth_code = input('Enter the authorization code here: ').strip()
 
         try:
             oauth_result = auth_flow.finish(auth_code)
+            refresh_token = oauth_result.refresh_token
         except Exception as e:
             print('Error: %s' % (e,))
-            return None
 
-        return oauth_result.refresh_token
+        return refresh_token
 
 class DropBox(object):
     def __init__(self):
@@ -84,17 +163,12 @@ class DropBox(object):
         return
     
     def __enter__(self):
-        self.dbx = dropbox.Dropbox(oauth2_refresh_token=self.config.refresh_token, app_key=self.config._app_key )
+        self.dbx = dropbox.Dropbox(oauth2_refresh_token=self.config.refresh_token, app_key=self.config.app_key)
         return self
     
     def __exit__(self, *args):
         self.dbx.close()
         return
-
-    @property
-    def status(self):
-        self.dbx.users_get_current_account()
-        return True
 
     @property
     def path(self):
@@ -107,72 +181,72 @@ class DropBox(object):
         self._path = path
         return
     
-    def put(self, filename):
-        if not self.status:
-            print('ERROR: no connection to dropbox account')
-            return False
+    @property
+    def status(self):
+        status = False
 
-        # Uploads contents of filename to Dropbox
-        with open(filename, 'rb') as f:
-            success = False
+        try:
+            self.dbx.users_get_current_account()
+            status = True
+        except dropbox.exceptions.HttpError as err:
+            #raise HttpError(err) from None
+            pass
+        
+        return status
+
+    def put(self, filename, local_path='.'):
+        success = False
+        
+        source = os.path.join(local_path, filename)
+        destination = os.path.join(self.path, os.path.basename(filename))
+
+        # Uploads contents of source to Dropbox
+        with open(source, 'rb') as f:
             # We use WriteMode=overwrite to make sure that the settings in the file
             # are changed on upload
+            mode = dropbox.files.WriteMode.overwrite
             try:
-                filename = os.path.join(self.path, os.path.basename(filename))
-                mode = dropbox.files.WriteMode.overwrite
-                self.dbx.files_upload(f.read(), filename, mode=mode)
+                self.dbx.files_upload(f.read(), destination, mode=mode)
                 success = True
+            except requests.exceptions.HTTPError as err:
+                raise HttpError(err) from None
+            except dropbox.exceptions.HttpError as err:
+                raise HttpError(err) from None
             except dropbox.exceptions.ApiError as err:
-                # This checks for the specific error where a user doesn't have
-                # enough Dropbox space quota to upload this file
-                if (err.error.is_path() and err.error.get_path().reason.is_insufficient_space()):
-                    print("ERROR: copy failed; insufficient space.")
-                elif err.user_message_text:
-                    print(err.user_message_text)
-                else:
-                    print(err)
+                # ApiError.error contains dropbox.files.UploadError
+                raise UploadError(err.error) from None
 
         return success
 
     def get(self, filename, local_path='.'):
-        if not self.status:
-            print('ERROR: no connection to dropbox account')
-            return False
-
+        status = False
+        
         source = os.path.join(self.path, filename)
         destination = os.path.join(local_path, filename)
-        status = False
 
         try:
             md = self.dbx.files_download_to_file(destination, source)
             status = True
+        except requests.exceptions.HTTPError as err:
+            raise HttpError(err) from None
         except dropbox.exceptions.HttpError as err:
-            print('ERROR: HTTP error', err)
+            raise HttpError(err) from None
         except dropbox.exceptions.ApiError as err:
-            if (err.error.is_path() and err.error.get_path().is_not_found()):
-                print('ERROR: {} not found on dropbox'.format(source))
-            else: 
-                print('ERROR: download error', err)
-
+            # ApiError.error contains dropbox.files.DownloadError
+            raise DownloadError(err.error) from None
+        
         return status
 
-
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print('Puts a file on dropbox.')
-        print('Usage: python3 dbx_put.py filename.ext')
-        exit(0)
-        
-    filename = sys.argv[1]
-    print('filename is {}'.format(filename))
-    
-    with DropBox() as db:
-        if not db.status:
-            print('Failed to connect to dropbox')
-            exit()
+    config = Config()
+    config.authenticate()
 
-        datestamp = time.strftime("%Y-%b-%d %H:%M:%S +0000", time.gmtime())
-        print('{}: Uploading {} to dropbox...'.format(datestamp, filename))
-        db.put(filename)
-        print('{}: Upload complete.'.format(datestamp))
-        print('success?')
+    with DropBox() as db:
+        if db.status:
+            print('connected.')
+        else:
+            print('Failed to connect to dropbox')
+
+    exit()
+
+
