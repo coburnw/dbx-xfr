@@ -58,15 +58,17 @@ def get(db, filename):
 
 def pair():
     success = False
-    config = dbx.Config()
-    config.authenticate()
+    
+    db = dbx.Dropbox()
+    if not db.authenticate():
+        return False
 
-    with dbx.DropBox() as db:
+    with dbx.Dropbox() as db:
         if db.status:
-            print('connected.')
+            print('authenticated.')
             success = True
         else:
-            print('Failed to connect to dropbox')
+            print('Failed to authenticate with dropbox user account.')
             
     return success
 
@@ -88,7 +90,7 @@ if __name__ == '__main__':
     elif len(sys.argv) == 3:
         status = 3
         filename = sys.argv[2]
-        with dbx.DropBox() as db:
+        with dbx.Dropbox() as db:
             hostname = socket.gethostname()
             db.path = '/{}'.format(hostname)
             if command == 'get':

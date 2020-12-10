@@ -2,7 +2,7 @@
 Dead simple Dropbox file transfer library in Python
 
 # Description
-A simple python library for getting files on and off Dropbox.  Heavily leans on example code found in the dropbox [python sdk](https://github.com/dropbox/dropbox-sdk-python)
+A simple python library for getting files on and off Dropbox.  Heavily leans on example code found in the dropbox [python sdk](https://github.com/dropbox/dropbox-sdk-python). Comes with a simple app to get and put files on Dropbox.
 
 On first run, leads the user thru the pairing sequence allowing the app access to the users dropbox Apps/dbx-xfr folder with file read/write access, saving the refresh token returned by dropbox in a config file in the local directory.  On subsequent runs, the refresh token is retrieved from the config file without need of user intervention unless the file or the token has be invalidated in some way.
 
